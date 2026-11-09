@@ -4,7 +4,7 @@
  * processGmailNotification (src/webhook/gmail.ts) is mocked — this tests
  * only the HTTP contract of the webhook handler:
  *   - Method guard (405)
- *   - Acknowledge-first: HTTP 200 is sent BEFORE processing begins
+ *   - Process-then-acknowledge: HTTP 200 is sent AFTER processing completes
  *   - processGmailNotification is called with the body and token from query
  *   - Errors from processGmailNotification are caught (200 already sent)
  */
@@ -49,28 +49,30 @@ describe('POST /webhook/gmail — API entry point', () => {
     expect(state.statusCode).toBe(405);
   });
 
-  // ── Acknowledge-first pattern ──────────────────────────────────────────────
+  // ── Process-then-acknowledge pattern ───────────────────────────────────────
+  // Vercel terminates the function once the response is flushed, so the handler
+  // must finish processing BEFORE sending 200 (see api/webhook/gmail.ts).
 
-  it('sends HTTP 200 before processGmailNotification resolves (ack-first)', async () => {
-    // processGmailNotification is a long-running promise that never resolves
-    // until we manually release it — the handler must still return 200 immediately.
+  it('sends HTTP 200 only after processGmailNotification resolves', async () => {
     let releaseProcess!: () => void;
     const processPending = new Promise<void>(resolve => { releaseProcess = resolve; });
     mockProcess.mockReturnValue(processPending);
 
     const { state, res } = mockRes();
-    await handler(
+    const handlerDone = handler(
       mockReq({ method: 'POST', query: { token: 'tok' }, body: VALID_PAYLOAD }),
       res,
     );
 
-    // Handler has returned — 200 must already be sent
+    // Processing is still pending — no response yet
+    await new Promise(resolve => setImmediate(resolve));
+    expect(state.ended).toBe(false);
+
+    releaseProcess();
+    await handlerDone;
+
     expect(state.statusCode).toBe(200);
     expect(state.ended).toBe(true);
-
-    // Release the pending process (cleanup)
-    releaseProcess();
-    await processPending;
   });
 
   // ── processGmailNotification invocation ───────────────────────────────────

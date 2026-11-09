@@ -12,6 +12,7 @@
  */
 
 import { gmail_v1 } from 'googleapis';
+import type { Message } from '../../src/types/message';
 import {
   decodeBase64Url,
   getHeader,
@@ -250,11 +251,14 @@ describe('normalizeMessage', () => {
 // ── toRow / rowToMessage round-trip ──────────────────────────────────────────
 
 describe('toRow — camelCase Message → snake_case MessageRow', () => {
-  const msg = {
+  const msg: Omit<Message, 'id' | 'createdAt' | 'updatedAt'> = {
     userId:    'user-uuid-123',
     gmailId:   'gmail_id_abc',
     threadId:  'thread_id_xyz',
     labelIds:  ['INBOX', 'UNREAD'],
+    internalDate: '1704067200000',
+    status:    'inbox',
+    draftId:   null,
     from:      'Alice <alice@example.com>',
     to:        'bob@example.com',
     subject:   'Hello',
@@ -301,6 +305,8 @@ describe('rowToMessage — snake_case DbMessageRow → camelCase Message', () =>
     body_html:    '<p>html</p>',
     is_read:      true,
     is_starred:   false,
+    status:       'inbox',
+    draft_id:     null,
     created_at:   '2024-01-01T00:00:00.000Z',
     updated_at:   '2024-01-02T00:00:00.000Z',
   };
