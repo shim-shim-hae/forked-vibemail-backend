@@ -46,6 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     res.redirect(302, `${frontendUrl}/auth/callback?token=${token}`);
   } catch (err) {
+    logCallbackError(err);
     if (err instanceof ProviderError) {
       if (err.code === 'TOKEN_EXCHANGE_FAILED') {
         errorResponse(res, 502, err.code, err.message);
@@ -63,6 +64,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
     errorResponse(res, 502, 'TOKEN_EXCHANGE_FAILED', 'OAuth token exchange failed');
   }
+}
+
+/**
+ * Logs why the OAuth callback failed. Only error names, codes and messages are
+ * logged — never the error object itself, which can carry tokens or request
+ * config (CLAUDE.md: tokens must never appear in logs).
+ */
+function logCallbackError(err: unknown): void {
+  const describe = (e: unknown): string => {
+    if (e instanceof Error) {
+      const code = (e as Error & { code?: unknown }).code;
+      return `${e.name}${code !== undefined ? ` [${String(code)}]` : ''}: ${e.message}`;
+    }
+    return typeof e === 'string' ? e : 'non-Error value thrown';
+  };
+
+  const cause = err instanceof ProviderError ? err.details : undefined;
+  console.error(
+    '[auth:callback] exchangeCode failed:',
+    describe(err),
+    cause !== undefined ? `| cause: ${describe(cause)}` : '',
+  );
 }
 
 function isTimeoutError(err: unknown): boolean {
